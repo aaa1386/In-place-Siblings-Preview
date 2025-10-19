@@ -180,6 +180,95 @@ def refreshSiblingPreviewPanels() {
     mapView.repaint()
 }
 
+// ★★★★ تابع کمکی: پیدا کردن نزدیک‌ترین مانع سمت چپ (برای راست‌چین) ★★★★
+def int findClosestLeftObstacle(NodeModel referenceNode, int referenceRightEdge, MapView mapView, JViewport viewport) {
+    int closestObstacle = 0 // ابتدای viewport
+    
+    c.viewRoot.findAll().each { nodeProxy ->
+        NodeModel otherNode = nodeProxy.delegate
+        if (otherNode != referenceNode) {
+            NodeView otherNodeView = mapView.getNodeView(otherNode)
+            if (otherNodeView != null && isNodeVisibleInViewport(otherNode)) {
+                Point otherPoint = mapView.getNodeContentLocation(otherNodeView)
+                Point otherScreen = SwingUtilities.convertPoint(mapView, otherPoint, viewport)
+                int otherRightEdge = otherScreen.x + otherNodeView.getContentPane().width
+                
+                // اگر گره در سمت چپ گره مرجع است و لبه راست آن نزدیک‌تر از مانع فعلی است
+                if (otherRightEdge < referenceRightEdge && otherRightEdge > closestObstacle) {
+                    closestObstacle = otherRightEdge
+                }
+            }
+        }
+    }
+    
+    return closestObstacle
+}
+
+// ★★★★ تابع کمکی: پیدا کردن نزدیک‌ترین مانع سمت راست (برای چپ‌چین) ★★★★
+def int findClosestRightObstacle(NodeModel referenceNode, int referenceLeftEdge, MapView mapView, JViewport viewport) {
+    int closestObstacle = viewport.getWidth() // انتهای viewport
+    
+    c.viewRoot.findAll().each { nodeProxy ->
+        NodeModel otherNode = nodeProxy.delegate
+        if (otherNode != referenceNode) {
+            NodeView otherNodeView = mapView.getNodeView(otherNode)
+            if (otherNodeView != null && isNodeVisibleInViewport(otherNode)) {
+                Point otherPoint = mapView.getNodeContentLocation(otherNodeView)
+                Point otherScreen = SwingUtilities.convertPoint(mapView, otherPoint, viewport)
+                int otherLeftEdge = otherScreen.x
+                
+                // اگر گره در سمت راست گره مرجع است و لبه چپ آن نزدیک‌تر از مانع فعلی است
+                if (otherLeftEdge > referenceLeftEdge && otherLeftEdge < closestObstacle) {
+                    closestObstacle = otherLeftEdge
+                }
+            }
+        }
+    }
+    
+    return closestObstacle
+}
+
+// ★★★★ تابع جدید: محاسبه عرض هوشمند بر اساس چیدمان ★★★★
+def int calculateSmartWidthWithHierarchy(NodeModel nodeNotProxy, int referenceNodeScreenX, MapView mapView, JViewport viewport) {
+    NodeView nodeView = mapView.getNodeView(nodeNotProxy)
+    if (nodeView == null) return 300
+    
+    // موقعیت گره مرجع
+    Point nodePoint = mapView.getNodeContentLocation(nodeView)
+    Point nodeScreen = SwingUtilities.convertPoint(mapView, nodePoint, viewport)
+    int nodeLeftEdge = nodeScreen.x
+    int nodeRightEdge = nodeScreen.x + nodeView.getContentPane().width
+    
+    if (rightToLeftLayout) {
+        // ★ راست‌چین: شروع از سمت راست گره مرجع به سمت چپ ★
+        
+        // 1. نقطه شروع: سمت راست گره مرجع
+        int startPoint = nodeRightEdge
+        
+        // 2. پیدا کردن موانع در سمت چپ (از راست به چپ)
+        int closestObstacle = findClosestLeftObstacle(nodeNotProxy, nodeRightEdge, mapView, viewport)
+        
+        // 3. عرض نهایی: از سمت راست گره مرجع تا نزدیک‌ترین مانع سمت چپ
+        int availableWidth = startPoint - closestObstacle - 10 // فاصله 10 پیکسل
+        
+        return Math.max(150, Math.min(400, availableWidth))
+        
+    } else {
+        // ★ چپ‌چین: شروع از سمت چپ گره مرجع به سمت راست ★
+        
+        // 1. نقطه شروع: سمت چپ گره مرجع
+        int startPoint = nodeLeftEdge
+        
+        // 2. پیدا کردن موانع در سمت راست (از چپ به راست)
+        int closestObstacle = findClosestRightObstacle(nodeNotProxy, nodeLeftEdge, mapView, viewport)
+        
+        // 3. عرض نهایی: از سمت چپ گره مرجع تا نزدیک‌ترین مانع سمت راست
+        int availableWidth = closestObstacle - startPoint - 10 // فاصله 10 پیکسل
+        
+        return Math.max(150, Math.min(400, availableWidth))
+    }
+}
+
 def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, int referenceNodeScreenX, int referenceNodeScreenY) {
     def nodeProxy = ProxyFactory.createNode(nodeNotProxy, ScriptUtils.getCurrentContext())
     def mapView = Controller.currentController.MapViewManager.mapView
@@ -309,7 +398,25 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
     
     // ★★★★ الگوریتم تنظیم ارتفاع ★★★★
     NodeView nodeView = mapView.getNodeView(nodeNotProxy)
-    int nodeWidth = nodeView.getContentPane().width
+    
+    // ★★★★ الگوریتم جدید: محاسبه عرض هوشمند ★★★★
+    int smartPanelWidth = calculateSmartWidthWithHierarchy(nodeNotProxy, referenceNodeScreenX, mapView, viewport)
+    
+    // موقعیت گره مرجع برای محاسبه نقطه شروع
+    Point nodePoint = mapView.getNodeContentLocation(nodeView)
+    Point nodeScreen = SwingUtilities.convertPoint(mapView, nodePoint, viewport)
+    int nodeLeftEdge = nodeScreen.x
+    int nodeRightEdge = nodeScreen.x + nodeView.getContentPane().width
+    
+    // ★★★★ محاسبه نقطه شروع بر اساس چیدمان ★★★★
+    int panelStartX
+    if (rightToLeftLayout) {
+        // راست‌چین: شروع از سمت راست گره مرجع
+        panelStartX = nodeRightEdge - smartPanelWidth
+    } else {
+        // چپ‌چین: شروع از سمت چپ گره مرجع  
+        panelStartX = nodeLeftEdge
+    }
     
     // محاسبه فضای عمودی موجود
     int verticalSpaceToViewportEdge
@@ -351,17 +458,17 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
     int minHeight = 30
     finalHeight = Math.max(finalHeight, minHeight)
     
-    // تنظیم ارتفاع پنل
-    siblingsPreviewPanel.setSize(nodeWidth, finalHeight)
-    scrollPanelSiblingsList.setPreferredSize(new Dimension(nodeWidth, finalHeight))
+    // ★★★★ استفاده از عرض هوشمند ★★★★
+    siblingsPreviewPanel.setSize(smartPanelWidth, finalHeight)
+    scrollPanelSiblingsList.setPreferredSize(new Dimension(smartPanelWidth, finalHeight))
 
     siblingsPreviewPanel.add(scrollPanelSiblingsList, BorderLayout.CENTER)
 
-    // تنظیم موقعیت
+    // ★★★★ تنظیم موقعیت با نقطه شروع صحیح ★★★★
     if (!positionAtBottom) {
-        siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY - finalHeight)
+        siblingsPreviewPanel.setLocation(panelStartX, referenceNodeScreenY - finalHeight)
     } else {
-        siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY + nodeView.getContentPane().height)
+        siblingsPreviewPanel.setLocation(panelStartX, referenceNodeScreenY + nodeView.getContentPane().height)
     }
 
     siblingsPreviewPanel.setVisible(true)
