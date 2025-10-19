@@ -1,0 +1,310 @@
+// @ExecutionModes({ON_SINGLE_NODE})
+
+import org.freeplane.core.ui.components.UITools
+import org.freeplane.features.map.NodeModel
+import org.freeplane.features.mode.Controller
+import org.freeplane.plugin.script.proxy.ProxyFactory
+import org.freeplane.plugin.script.proxy.ScriptUtils
+import org.freeplane.view.swing.map.MapView
+import org.freeplane.view.swing.map.NodeView
+
+import javax.swing.*
+import javax.swing.event.ChangeListener
+import javax.swing.event.ChangeEvent
+import java.awt.*
+import java.awt.event.*
+import java.util.ArrayList
+
+// تنظیمات
+@groovy.transform.Field boolean showSiblingsPreview = true
+@groovy.transform.Field int scrollStopDelay = 300
+@groovy.transform.Field ArrayList<JPanel> activeSiblingPreviewPanels = []
+@groovy.transform.Field Timer scrollStopTimer = new Timer(scrollStopDelay, null)
+
+// شروع
+initializeSiblingsPreview()
+
+def initializeSiblingsPreview() {
+    // تنظیم تایمر برای توقف اسکرول
+    scrollStopTimer.setRepeats(false)
+    scrollStopTimer.addActionListener({
+        refreshSiblingPreviewPanels()
+    })
+    
+    // اضافه کردن لیسنرها
+    addScrollAndMoveListeners()
+    
+    // اولین بار اجرا
+    refreshSiblingPreviewPanels()
+}
+
+def addScrollAndMoveListeners() {
+    def mapView = Controller.currentController.MapViewManager.mapView
+    
+    // لیسنر حرکت
+    mapView.addComponentListener(new ComponentAdapter() {
+        public void componentMoved(ComponentEvent e) {
+            if (showSiblingsPreview) {
+                scrollStopTimer.restart()
+            }
+        }
+    })
+    
+    // لیسنر اسکرول
+    def viewport = mapView.getParent()
+    if (viewport instanceof JViewport) {
+        viewport.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent e) {
+                if (showSiblingsPreview) {
+                    scrollStopTimer.restart()
+                }
+            }
+        })
+    }
+}
+
+def refreshSiblingPreviewPanels() {
+    // پاک کردن پنل‌های قبلی
+    activeSiblingPreviewPanels.each { panel ->
+        panel.setVisible(false)
+        panel.getParent()?.remove(panel)
+    }
+    activeSiblingPreviewPanels.clear()
+
+    if (!showSiblingsPreview) return
+
+    def mapView = Controller.currentController.MapViewManager.mapView
+    def viewport = mapView.getParent()
+    if (!(viewport instanceof JViewport)) return
+
+    def c = ScriptUtils.c()
+    
+    // پردازش همه نودها
+    c.viewRoot.findAll().each { nodeProxy ->
+        if (nodeProxy == c.viewRoot) return
+
+        def testedNode = nodeProxy.delegate
+        if (testedNode == null) return
+
+        NodeView testedNodeView = mapView.getNodeView(testedNode)
+        if (testedNodeView == null) return
+        
+        Point selectedPointOnMap = mapView.getNodeContentLocation(testedNodeView)
+        Point selectedPointOnScreen = SwingUtilities.convertPoint(mapView, selectedPointOnMap, viewport)
+
+        // فقط اگر نود والد داشته باشد و siblings بیشتر از 1
+        if (testedNode.parent?.children?.size() == 1) return
+
+        def parentNode = testedNode.parent
+        def siblings = parentNode.children
+        int selectedIndex = siblings.indexOf(testedNode)
+        if (selectedIndex < 0) return
+
+        // بررسی siblingهای بالا
+        NodeModel offScreenSiblingAbove = null
+        if (selectedIndex > 0 && !isNodeVisibleInViewport(siblings[selectedIndex - 1])) {
+            offScreenSiblingAbove = siblings[selectedIndex - 1]
+        }
+
+        if (offScreenSiblingAbove != null) {
+            NodeView offScreenSiblingAboveNodeView = mapView.getNodeView(offScreenSiblingAbove)
+            Point offScreenSiblingAboveSelectedPointOnMap = mapView.getNodeContentLocation(offScreenSiblingAboveNodeView)
+            Point offScreenSiblingAboveSelectedPointOnScreen = SwingUtilities.convertPoint(mapView, offScreenSiblingAboveSelectedPointOnMap, viewport)
+            
+            if (selectedPointOnScreen.y >= 0 && offScreenSiblingAboveSelectedPointOnScreen.y <= 0 && 
+                selectedPointOnScreen.x > 0 && selectedPointOnScreen.x < viewport.getWidth()) {
+                
+                def siblingsPreviewPanelCreated = createSiblingPreviewPanel(testedNode, false, selectedPointOnScreen.x as int, selectedPointOnScreen.y as int)
+                if (siblingsPreviewPanelCreated) {
+                    activeSiblingPreviewPanels.add(siblingsPreviewPanelCreated)
+                }
+            }
+        }
+
+        // بررسی siblingهای پایین
+        NodeModel offScreenSiblingBelow = null
+        if (selectedIndex + 1 < siblings.size() && !isNodeVisibleInViewport(siblings[selectedIndex + 1])) {
+            offScreenSiblingBelow = siblings[selectedIndex + 1]
+        }
+
+        if (offScreenSiblingBelow != null) {
+            NodeView offScreenSiblingBelowNodeView = mapView.getNodeView(offScreenSiblingBelow)
+            Point offScreenSiblingBelowSelectedPointOnMap = mapView.getNodeContentLocation(offScreenSiblingBelowNodeView)
+            Point offScreenSiblingBelowSelectedPointOnScreen = SwingUtilities.convertPoint(mapView, offScreenSiblingBelowSelectedPointOnMap, viewport)
+            
+            if (selectedPointOnScreen.y < viewport.getHeight() && 
+                offScreenSiblingBelowSelectedPointOnScreen.y >= viewport.getHeight() && 
+                selectedPointOnScreen.x > 0 && selectedPointOnScreen.x < viewport.getWidth()) {
+                
+                def siblingsPreviewPanelCreated = createSiblingPreviewPanel(testedNode, true, selectedPointOnScreen.x as int, selectedPointOnScreen.y as int)
+                if (siblingsPreviewPanelCreated) {
+                    activeSiblingPreviewPanels.add(siblingsPreviewPanelCreated)
+                }
+            }
+        }
+    }
+    
+    // بروزرسانی نمایش
+    mapView.repaint()
+}
+
+def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, int referenceNodeScreenX, int referenceNodeScreenY) {
+    def nodeProxy = ProxyFactory.createNode(nodeNotProxy, ScriptUtils.getCurrentContext())
+    def mapView = Controller.currentController.MapViewManager.mapView
+    def viewport = mapView.getParent()
+
+    JPanel siblingsPreviewPanel = new JPanel(new BorderLayout())
+    siblingsPreviewPanel.setBackground(Color.LIGHT_GRAY)
+    siblingsPreviewPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1))
+
+    // ایجاد مدل برای siblings
+    DefaultListModel<NodeModel> siblingsUpOrDownModel = new DefaultListModel<>()
+
+    if (!positionAtBottom) {
+        // siblings بالا
+        def siblingsUP = []
+        nodeProxy.parent.children.each {
+            if (it.parent.children.indexOf(it) < nodeProxy.parent.children.indexOf(nodeProxy)) {
+                siblingsUP.add(it.delegate)
+            }
+        }
+        siblingsUP.each {
+            if (!isNodeVisibleInViewport(it)) {
+                siblingsUpOrDownModel.addElement(it)
+            }
+        }
+    } else {
+        // siblings پایین
+        def siblingsDown = []
+        nodeProxy.parent.children.each {
+            if (it.parent.children.indexOf(it) > nodeProxy.parent.children.indexOf(nodeProxy)) {
+                siblingsDown.add(it.delegate)
+            }
+        }
+        siblingsDown.each {
+            if (!isNodeVisibleInViewport(it)) {
+                siblingsUpOrDownModel.addElement(it)
+            }
+        }
+    }
+
+    if (siblingsUpOrDownModel.size() == 0) return null
+
+    JList<NodeModel> siblingsList = new JList<>(siblingsUpOrDownModel)
+    
+    // تنظیم رندرر برای لیست
+    siblingsList.setCellRenderer(new DefaultListCellRenderer() {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+            if (value instanceof NodeModel) {
+                label.setText(value.text ?: "")
+                label.setBackground(isSelected ? Color.YELLOW : Color.WHITE)
+                label.setForeground(Color.BLACK)
+            }
+            return label
+        }
+    })
+
+    // اضافه کردن لیسنر برای کلیک
+    siblingsList.addMouseListener(new MouseAdapter() {
+        @Override
+        public void mouseClicked(MouseEvent e) {
+            if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
+                int index = siblingsList.locationToIndex(e.getPoint())
+                if (index >= 0) {
+                    NodeModel selectedNode = siblingsUpOrDownModel.getElementAt(index)
+                    Controller.currentController.mapViewManager.mapView.getMapSelection().selectAsTheOnlyOneSelected(selectedNode)
+                }
+            }
+        }
+    })
+
+    JScrollPane scrollPanelSiblingsList = new JScrollPane(siblingsList)
+    
+    // تنظیم سایز
+    int numItems = siblingsUpOrDownModel.getSize()
+    int visibleRows = Math.min(numItems, 7)
+    siblingsList.setVisibleRowCount(visibleRows)
+    
+    NodeView nodeView = mapView.getNodeView(nodeNotProxy)
+    int nodeWidth = nodeView.getContentPane().width
+    int panelHeight = visibleRows * 25 + 10
+    
+    siblingsPreviewPanel.add(scrollPanelSiblingsList, BorderLayout.CENTER)
+    siblingsPreviewPanel.setSize(nodeWidth, panelHeight)
+
+    // تنظیم موقعیت
+    if (!positionAtBottom) {
+        siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY - panelHeight)
+    } else {
+        siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY + nodeView.getContentPane().height)
+    }
+
+    siblingsPreviewPanel.setVisible(true)
+    
+    // اضافه کردن به parent panel
+    def parentPanel = mapView.getParent().getParent()
+    parentPanel.add(siblingsPreviewPanel)
+    parentPanel.setComponentZOrder(siblingsPreviewPanel, 0)
+
+    return siblingsPreviewPanel
+}
+
+def boolean isNodeVisibleInViewport(NodeModel node) {
+    def mapView = Controller.currentController.MapViewManager.mapView
+    def viewport = mapView.getParent()
+    if (!(viewport instanceof JViewport)) return false
+
+    NodeView nodeView = mapView.getNodeView(node)
+    if (nodeView == null) return false
+
+    def pointOnMap = mapView.getNodeContentLocation(nodeView)
+    if (pointOnMap == null) return false
+
+    Rectangle r = new Rectangle()
+    r.x = pointOnMap.x
+    r.y = pointOnMap.y
+    r.width = nodeView.getContentPane().width
+    r.height = nodeView.getContentPane().height
+
+    def viewRect = viewport.getViewRect()
+    return viewRect.intersects(r)
+}
+
+// منوی کنترل
+def showControlMenu() {
+    JPopupMenu menu = new JPopupMenu()
+    
+    JCheckBoxMenuItem toggleItem = new JCheckBoxMenuItem("نمایش پیش‌نمایش siblings", showSiblingsPreview)
+    toggleItem.addActionListener({ e ->
+        showSiblingsPreview = toggleItem.isSelected()
+        if (!showSiblingsPreview) {
+            activeSiblingPreviewPanels.each { panel ->
+                panel.setVisible(false)
+                panel.getParent()?.remove(panel)
+            }
+            activeSiblingPreviewPanels.clear()
+        } else {
+            refreshSiblingPreviewPanels()
+        }
+    })
+    
+    menu.add(toggleItem)
+    
+    JMenuItem refreshItem = new JMenuItem("بروزرسانی")
+    refreshItem.addActionListener({ e ->
+        refreshSiblingPreviewPanels()
+    })
+    menu.add(refreshItem)
+    
+    return menu
+}
+
+// اجرای منو
+def menu = showControlMenu()
+def mapView = Controller.currentController.mapViewManager.mapView
+menu.show(mapView, 100, 100)
+
+return
