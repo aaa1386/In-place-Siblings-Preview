@@ -17,10 +17,11 @@ import java.util.ArrayList
 
 // تنظیمات
 @groovy.transform.Field boolean showSiblingsPreview = true
-@groovy.transform.Field int scrollStopDelay = 30
+@groovy.transform.Field int scrollStopDelay = 300
 @groovy.transform.Field ArrayList<JPanel> activeSiblingPreviewPanels = []
 @groovy.transform.Field Timer scrollStopTimer = new Timer(scrollStopDelay, null)
 @groovy.transform.Field boolean rightToLeftLayout = true // true=راست‌چین, false=چپ‌چین
+@groovy.transform.Field boolean isScrolling = false // اضافه شده برای مدیریت وضعیت اسکرول
 
 // شروع
 initializeSiblingsPreview()
@@ -29,6 +30,7 @@ def initializeSiblingsPreview() {
     // تنظیم تایمر برای توقف اسکرول
     scrollStopTimer.setRepeats(false)
     scrollStopTimer.addActionListener({
+        isScrolling = false
         refreshSiblingPreviewPanels()
     })
     
@@ -58,6 +60,10 @@ def addScrollAndMoveListeners() {
             @Override
             public void stateChanged(ChangeEvent e) {
                 if (showSiblingsPreview) {
+                    if (!isScrolling) {
+                        isScrolling = true
+                        hideSiblingPreviewPanels()
+                    }
                     scrollStopTimer.restart()
                 }
             }
@@ -65,7 +71,29 @@ def addScrollAndMoveListeners() {
     }
 }
 
+// تابع جدید برای مخفی کردن پنل‌ها هنگام اسکرول
+def hideSiblingPreviewPanels() {
+    activeSiblingPreviewPanels.each { panel ->
+        panel.setVisible(false)
+    }
+}
+
+// تابع جدید برای نمایش پنل‌ها
+def showSiblingPreviewPanels() {
+    activeSiblingPreviewPanels.each { panel ->
+        panel.setVisible(true)
+        panel.revalidate()
+        panel.repaint()
+    }
+}
+
 def refreshSiblingPreviewPanels() {
+    // اگر در حال اسکرول هستیم، فقط پنل‌های موجود را نمایش بده
+    if (isScrolling) {
+        showSiblingPreviewPanels()
+        return
+    }
+
     // پاک کردن پنل‌های قبلی
     activeSiblingPreviewPanels.each { panel ->
         panel.setVisible(false)
@@ -201,15 +229,16 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
         siblingsList.setCellRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
                 if (value instanceof NodeModel) {
-                    label.setText(value.text ?: "")
-                    label.setBackground(isSelected ? Color.YELLOW : Color.WHITE)
-                    label.setForeground(Color.BLACK)
-                    label.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
-                    label.setHorizontalAlignment(SwingConstants.RIGHT)
+                    setText(value.text ?: "")
+                    setBackground(isSelected ? Color.YELLOW : Color.WHITE)
+                    setForeground(Color.BLACK)
+                    setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
+                    setHorizontalAlignment(SwingConstants.RIGHT)
+                    setOpaque(true)
                 }
-                return label
+                return c
             }
         })
     } else {
@@ -218,15 +247,16 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
         siblingsList.setCellRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
                 if (value instanceof NodeModel) {
-                    label.setText(value.text ?: "")
-                    label.setBackground(isSelected ? Color.YELLOW : Color.WHITE)
-                    label.setForeground(Color.BLACK)
-                    label.setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT)
-                    label.setHorizontalAlignment(SwingConstants.LEFT)
+                    setText(value.text ?: "")
+                    setBackground(isSelected ? Color.YELLOW : Color.WHITE)
+                    setForeground(Color.BLACK)
+                    setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT)
+                    setHorizontalAlignment(SwingConstants.LEFT)
+                    setOpaque(true)
                 }
-                return label
+                return c
             }
         })
     }
@@ -256,9 +286,6 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
         // حالت چپ‌چین: اسکرول‌بار در سمت چپ
         scrollPanelSiblingsList.setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT)
         scrollPanelSiblingsList.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED)
-        
-        // برای قرار دادن اسکرول‌بار در سمت چپ
-        siblingsList.setLayoutOrientation(JList.VERTICAL)
     }
     
     // تنظیم سایز
@@ -286,6 +313,13 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
     def parentPanel = mapView.getParent().getParent()
     parentPanel.add(siblingsPreviewPanel)
     parentPanel.setComponentZOrder(siblingsPreviewPanel, 0)
+
+    // فورس رندر کردن
+    siblingsPreviewPanel.doLayout()
+    siblingsList.revalidate()
+    siblingsList.repaint()
+    scrollPanelSiblingsList.revalidate()
+    scrollPanelSiblingsList.repaint()
 
     return siblingsPreviewPanel
 }
