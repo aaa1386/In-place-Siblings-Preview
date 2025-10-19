@@ -288,21 +288,59 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
         scrollPanelSiblingsList.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED)
     }
     
-    // تنظیم سایز
-    int numItems = siblingsUpOrDownModel.getSize()
-    int visibleRows = Math.min(numItems, 7)
-    siblingsList.setVisibleRowCount(visibleRows)
-    
+    // ★★★★ الگوریتم کاملاً ساده و بدون تقسیم ★★★★
     NodeView nodeView = mapView.getNodeView(nodeNotProxy)
     int nodeWidth = nodeView.getContentPane().width
-    int panelHeight = visibleRows * 25 + 10
     
+    // محاسبه فضای عمودی موجود
+    int verticalSpaceToViewportEdge
+    if (!positionAtBottom) {
+        // برای پنل بالایی: فاصله از بالای viewport تا موقعیت نود مرجع
+        verticalSpaceToViewportEdge = referenceNodeScreenY
+    } else {
+        // برای پنل پایینی: فاصله از پایین نود مرجع تا انتهای viewport
+        verticalSpaceToViewportEdge = viewport.getHeight() - (referenceNodeScreenY + nodeView.getContentPane().height)
+    }
+    
+    // ارتفاع ثابت برای هر آیتم
+    int itemHeight = 25
+    
+    // تعداد آیتم‌ها
+    int itemsCount = siblingsUpOrDownModel.size()
+    
+    // محاسبه ارتفاع مورد نیاز
+    int requiredHeight = itemsCount * itemHeight + 10
+    
+    // تعیین ارتفاع نهایی - بدون هیچ تقسیمی!
+    int finalHeight
+    if (requiredHeight <= verticalSpaceToViewportEdge) {
+        // نمایش تمام آیتم‌ها بدون اسکرول
+        finalHeight = requiredHeight
+        scrollPanelSiblingsList.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER)
+        siblingsList.setVisibleRowCount(itemsCount)
+    } else {
+        // نمایش با اسکرول - استفاده از حداکثر فضای موجود
+        finalHeight = verticalSpaceToViewportEdge - 5
+        scrollPanelSiblingsList.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED)
+        
+        // تنظیم تعداد سطرهای قابل مشاهده بر اساس ارتفاع نهایی
+        int visibleRows = (finalHeight - 10) / itemHeight
+        siblingsList.setVisibleRowCount(Math.max(1, visibleRows))
+    }
+    
+    // حداقل ارتفاع
+    int minHeight = 30
+    finalHeight = Math.max(finalHeight, minHeight)
+    
+    // تنظیم ارتفاع پنل
+    siblingsPreviewPanel.setSize(nodeWidth, finalHeight)
+    scrollPanelSiblingsList.setPreferredSize(new Dimension(nodeWidth, finalHeight))
+
     siblingsPreviewPanel.add(scrollPanelSiblingsList, BorderLayout.CENTER)
-    siblingsPreviewPanel.setSize(nodeWidth, panelHeight)
 
     // تنظیم موقعیت
     if (!positionAtBottom) {
-        siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY - panelHeight)
+        siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY - finalHeight)
     } else {
         siblingsPreviewPanel.setLocation(referenceNodeScreenX, referenceNodeScreenY + nodeView.getContentPane().height)
     }
