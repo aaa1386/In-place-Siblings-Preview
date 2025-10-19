@@ -7,6 +7,8 @@ import org.freeplane.plugin.script.proxy.ProxyFactory
 import org.freeplane.plugin.script.proxy.ScriptUtils
 import org.freeplane.view.swing.map.MapView
 import org.freeplane.view.swing.map.NodeView
+import org.freeplane.features.nodestyle.NodeStyleController
+import org.freeplane.features.styles.LogicalStyleController.StyleOption
 
 import javax.swing.*
 import javax.swing.event.ChangeListener
@@ -222,44 +224,61 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
 
     JList<NodeModel> siblingsList = new JList<>(siblingsUpOrDownModel)
     
-    // تنظیم رندرر برای لیست بر اساس چیدمان انتخابی
-    if (rightToLeftLayout) {
-        // حالت راست‌چین - متن راست‌چین و اسکرول‌بار سمت راست
-        siblingsList.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
-        siblingsList.setCellRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                if (value instanceof NodeModel) {
-                    setText(value.text ?: "")
-                    setBackground(isSelected ? Color.YELLOW : Color.WHITE)
-                    setForeground(Color.BLACK)
-                    setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
-                    setHorizontalAlignment(SwingConstants.RIGHT)
-                    setOpaque(true)
+    // ★★★★ الگوی جدید: رندرر پیشرفته با دایره و رنگ ★★★★
+    siblingsList.setCellRenderer(new DefaultListCellRenderer() {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+            if (value instanceof NodeModel) {
+                NodeModel currentNode = (NodeModel) value
+                
+                // ★ 1. دایره برای گره‌های دارای فرزند
+                String prefix = ""
+                if (!currentNode.isLeaf()) {
+                    prefix = "○ "
                 }
-                return c
-            }
-        })
-    } else {
-        // حالت چپ‌چین - متن چپ‌چین و اسکرول‌بار سمت چپ
-        siblingsList.setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT)
-        siblingsList.setCellRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                if (value instanceof NodeModel) {
-                    setText(value.text ?: "")
-                    setBackground(isSelected ? Color.YELLOW : Color.WHITE)
-                    setForeground(Color.BLACK)
-                    setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT)
-                    setHorizontalAlignment(SwingConstants.LEFT)
-                    setOpaque(true)
+                
+                // ★ 2. انعکاس رنگ گره
+                Color backgroundColor = NodeStyleController.getController().getBackgroundColor(currentNode, StyleOption.FOR_UNSELECTED_NODE)
+                Color fontColor = NodeStyleController.getController().getColor(currentNode, StyleOption.FOR_UNSELECTED_NODE)
+                
+                if (backgroundColor == null) {
+                    backgroundColor = Color.WHITE
                 }
-                return c
+                if (fontColor == null) {
+                    fontColor = Color.BLACK
+                }
+                
+                label.setText(prefix + (currentNode.text ?: ""))
+                label.setBackground(backgroundColor)
+                label.setForeground(fontColor)
+                label.setOpaque(true)
+                
+                // ★ 3. حاشیه برای جداسازی بهتر (شبیه خطوط اتصال)
+                label.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 0, 1, 0, Color.GRAY), // خط پایینی
+                    BorderFactory.createEmptyBorder(2, 5, 2, 5) // حاشیه داخلی
+                ))
+                
+                // تنظیم تراز بر اساس چیدمان انتخابی
+                if (rightToLeftLayout) {
+                    label.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
+                    label.setHorizontalAlignment(SwingConstants.RIGHT)
+                } else {
+                    label.setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT)
+                    label.setHorizontalAlignment(SwingConstants.LEFT)
+                }
             }
-        })
-    }
+            
+            // رنگ‌های انتخاب
+            if (isSelected) {
+                label.setBackground(new Color(255, 255, 150)) // زرد روشن برای انتخاب
+                label.setForeground(Color.BLACK)
+            }
+            
+            return label
+        }
+    })
 
     // اضافه کردن لیسنر برای کلیک
     siblingsList.addMouseListener(new MouseAdapter() {
@@ -288,7 +307,7 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
         scrollPanelSiblingsList.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED)
     }
     
-    // ★★★★ الگوریتم کاملاً ساده و بدون تقسیم ★★★★
+    // ★★★★ الگوریتم تنظیم ارتفاع ★★★★
     NodeView nodeView = mapView.getNodeView(nodeNotProxy)
     int nodeWidth = nodeView.getContentPane().width
     
@@ -311,7 +330,7 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
     // محاسبه ارتفاع مورد نیاز
     int requiredHeight = itemsCount * itemHeight + 10
     
-    // تعیین ارتفاع نهایی - بدون هیچ تقسیمی!
+    // تعیین ارتفاع نهایی
     int finalHeight
     if (requiredHeight <= verticalSpaceToViewportEdge) {
         // نمایش تمام آیتم‌ها بدون اسکرول
