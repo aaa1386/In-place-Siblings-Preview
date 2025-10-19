@@ -156,7 +156,7 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
 
     JPanel siblingsPreviewPanel = new JPanel(new BorderLayout())
     siblingsPreviewPanel.setBackground(Color.LIGHT_GRAY)
-    siblingsPreviewPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1))
+    siblingsPreviewPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 2, Color.BLACK))
 
     // ایجاد مدل برای siblings
     DefaultListModel<NodeModel> siblingsUpOrDownModel = new DefaultListModel<>()
@@ -193,7 +193,8 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
 
     JList<NodeModel> siblingsList = new JList<>(siblingsUpOrDownModel)
     
-    // تنظیم رندرر برای لیست
+    // تنظیم رندرر برای لیست با راست‌چین کردن
+    siblingsList.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
     siblingsList.setCellRenderer(new DefaultListCellRenderer() {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
@@ -202,6 +203,8 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
                 label.setText(value.text ?: "")
                 label.setBackground(isSelected ? Color.YELLOW : Color.WHITE)
                 label.setForeground(Color.BLACK)
+                label.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
+                label.setHorizontalAlignment(SwingConstants.RIGHT)
             }
             return label
         }
@@ -222,6 +225,7 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
     })
 
     JScrollPane scrollPanelSiblingsList = new JScrollPane(siblingsList)
+    scrollPanelSiblingsList.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
     
     // تنظیم سایز
     int numItems = siblingsUpOrDownModel.getSize()
@@ -276,8 +280,10 @@ def boolean isNodeVisibleInViewport(NodeModel node) {
 // منوی کنترل
 def showControlMenu() {
     JPopupMenu menu = new JPopupMenu()
+    menu.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
     
     JCheckBoxMenuItem toggleItem = new JCheckBoxMenuItem("نمایش پیش‌نمایش siblings", showSiblingsPreview)
+    toggleItem.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
     toggleItem.addActionListener({ e ->
         showSiblingsPreview = toggleItem.isSelected()
         if (!showSiblingsPreview) {
@@ -294,6 +300,7 @@ def showControlMenu() {
     menu.add(toggleItem)
     
     JMenuItem refreshItem = new JMenuItem("بروزرسانی")
+    refreshItem.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT)
     refreshItem.addActionListener({ e ->
         refreshSiblingPreviewPanels()
     })
