@@ -156,7 +156,8 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
 
     JPanel siblingsPreviewPanel = new JPanel(new BorderLayout())
     siblingsPreviewPanel.setBackground(Color.LIGHT_GRAY)
-    siblingsPreviewPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 2, Color.BLACK))
+     siblingsPreviewPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1))
+
 
     // ایجاد مدل برای siblings
     DefaultListModel<NodeModel> siblingsUpOrDownModel = new DefaultListModel<>()
