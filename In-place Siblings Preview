@@ -21,7 +21,7 @@ import java.util.ArrayList
 
 // تنظیمات
 @groovy.transform.Field boolean showSiblingsPreview = true
-@groovy.transform.Field int scrollStopDelay = 300
+@groovy.transform.Field int scrollStopDelay = 1
 @groovy.transform.Field ArrayList<JPanel> activeSiblingPreviewPanels = []
 @groovy.transform.Field Timer scrollStopTimer = new Timer(scrollStopDelay, null)
 @groovy.transform.Field boolean rightToLeftLayout = true // true=راست‌چین, false=چپ‌چین
