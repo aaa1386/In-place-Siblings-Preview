@@ -1,4 +1,6 @@
-// @ExecutionModes({ON_SINGLE_NODE})
+// Based on: https://github.com/euu2021/Freeplane_UtilityPanels/blob/main/utilityPanels.groovy
+// Modified by aaa1386
+// @ExecutionModes({ON_SINGLE_NODE="/menu_bar/aaa"})
 
 import org.freeplane.core.ui.components.UITools
 import org.freeplane.features.map.NodeModel
