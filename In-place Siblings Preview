@@ -31,7 +31,7 @@ import java.util.ArrayList
 initializeSiblingsPreview()
 
 def initializeSiblingsPreview() {
-    // تنظیم تایمر برای توقف اسکرول
+    // تنظیم تایمر برای توقف اسکرول (اکنون فقط برای به روزرسانی نهایی استفاده می‌شود)
     scrollStopTimer.setRepeats(false)
     scrollStopTimer.addActionListener({
         isScrolling = false
@@ -52,7 +52,7 @@ def addScrollAndMoveListeners() {
     mapView.addComponentListener(new ComponentAdapter() {
         public void componentMoved(ComponentEvent e) {
             if (showSiblingsPreview) {
-                scrollStopTimer.restart()
+                updatePanelPositions() // به روزرسانی موقعیت پنل‌ها
             }
         }
     })
@@ -66,8 +66,8 @@ def addScrollAndMoveListeners() {
                 if (showSiblingsPreview) {
                     if (!isScrolling) {
                         isScrolling = true
-                        hideSiblingPreviewPanels()
                     }
+                    updatePanelPositions() // به روزرسانی موقعیت پنل‌ها در حین اسکرول
                     scrollStopTimer.restart()
                 }
             }
@@ -75,29 +75,72 @@ def addScrollAndMoveListeners() {
     }
 }
 
-// تابع جدید برای مخفی کردن پنل‌ها هنگام اسکرول
-def hideSiblingPreviewPanels() {
-    activeSiblingPreviewPanels.each { panel ->
-        panel.setVisible(false)
-    }
-}
+// ★★★★ تابع جدید: به روزرسانی موقعیت پنل‌ها بدون مخفی کردن ★★★★
+def updatePanelPositions() {
+    if (!showSiblingsPreview || activeSiblingPreviewPanels.isEmpty()) return
+    
+    def mapView = Controller.currentController.MapViewManager.mapView
+    def viewport = mapView.getParent()
+    if (!(viewport instanceof JViewport)) return
 
-// تابع جدید برای نمایش پنل‌ها
-def showSiblingPreviewPanels() {
+    // فقط موقعیت پنل‌های موجود را به روز کن (بدون ایجاد پنل جدید)
     activeSiblingPreviewPanels.each { panel ->
-        panel.setVisible(true)
-        panel.revalidate()
-        panel.repaint()
+        def nodeData = panel.getClientProperty("nodeData")
+        if (nodeData != null) {
+            def nodeNotProxy = nodeData.node
+            def positionAtBottom = nodeData.positionAtBottom
+            
+            NodeView nodeView = mapView.getNodeView(nodeNotProxy)
+            if (nodeView != null) {
+                Point nodePoint = mapView.getNodeContentLocation(nodeView)
+                Point nodeScreen = SwingUtilities.convertPoint(mapView, nodePoint, viewport)
+                
+                // محاسبه موقعیت جدید
+                int referenceNodeScreenX = nodeScreen.x
+                int referenceNodeScreenY = nodeScreen.y
+                
+                // ★★★★ محاسبه عرض هوشمند ★★★★
+                int smartPanelWidth = calculateSmartWidthWithHierarchy(nodeNotProxy, referenceNodeScreenX, mapView, viewport)
+                
+                // موقعیت گره مرجع برای محاسبه نقطه شروع
+                int nodeLeftEdge = nodeScreen.x
+                int nodeRightEdge = nodeScreen.x + nodeView.getContentPane().width
+                
+                // ★★★★ محاسبه نقطه شروع بر اساس چیدمان ★★★★
+                int panelStartX
+                if (rightToLeftLayout) {
+                    // راست‌چین: شروع از سمت راست گره مرجع
+                    panelStartX = nodeRightEdge - smartPanelWidth
+                } else {
+                    // چپ‌چین: شروع از سمت چپ گره مرجع  
+                    panelStartX = nodeLeftEdge
+                }
+                
+                // تنظیم موقعیت جدید
+                if (!positionAtBottom) {
+                    panel.setLocation(panelStartX, referenceNodeScreenY - panel.getHeight())
+                } else {
+                    panel.setLocation(panelStartX, referenceNodeScreenY + nodeView.getContentPane().height)
+                }
+                
+                // تنظیم اندازه اگر لازم است
+                if (panel.getWidth() != smartPanelWidth) {
+                    panel.setSize(smartPanelWidth, panel.getHeight())
+                    def scrollPane = panel.getComponent(0) // فرض می‌کنیم اولین کامپوننت JScrollPane است
+                    if (scrollPane instanceof JScrollPane) {
+                        scrollPane.setPreferredSize(new Dimension(smartPanelWidth, panel.getHeight()))
+                        scrollPane.revalidate()
+                    }
+                }
+            }
+        }
     }
+    
+    // فورس رندر کردن
+    mapView.repaint()
 }
 
 def refreshSiblingPreviewPanels() {
-    // اگر در حال اسکرول هستیم، فقط پنل‌های موجود را نمایش بده
-    if (isScrolling) {
-        showSiblingPreviewPanels()
-        return
-    }
-
     // پاک کردن پنل‌های قبلی
     activeSiblingPreviewPanels.each { panel ->
         panel.setVisible(false)
@@ -279,6 +322,10 @@ def createSiblingPreviewPanel(NodeModel nodeNotProxy, boolean positionAtBottom, 
     JPanel siblingsPreviewPanel = new JPanel(new BorderLayout())
     siblingsPreviewPanel.setBackground(Color.LIGHT_GRAY)
     siblingsPreviewPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1))
+
+    // ذخیره اطلاعات نود برای به روزرسانی موقعیت
+    def nodeData = [node: nodeNotProxy, positionAtBottom: positionAtBottom]
+    siblingsPreviewPanel.putClientProperty("nodeData", nodeData)
 
     // ایجاد مدل برای siblings
     DefaultListModel<NodeModel> siblingsUpOrDownModel = new DefaultListModel<>()
